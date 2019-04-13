@@ -110,8 +110,16 @@ class Order {
             //echo $customerThana;
 
 
+           
+			$thanasql = $this->dbConn->query("SELECT thanaid, districtid from tbl_robi_mapping where thana = '$this->recipient_thana' AND district = '$this->recipient_district' ");
+			$thana = $thanasql->fetch();
+			$customerThana = $thana['thanaid'];
+			$customerDistrict = $thana['districtid'];
+
+            
+
 			
-			if ($this->pick_address != ""){
+			
              //Point
 				$pickuppoint = $this->dbConn->query("Select pointCode from tbl_merchant_info where merchantCode = 'M-1-0484'");
 		
@@ -126,22 +134,38 @@ class Order {
 				$pickuppointcode = $pickupSystemRow['pickPointCode'];
              //echo $pickuppointcode;
 
-				$droppoint = $this->dbConn->query("SELECT pointCode from tbl_point_mapping
+				$droppoint = $this->dbConn->query("SELECT pointCode,districtid2 from tbl_robi_mapping
 				 where district ='$this->recipient_district' AND thana='$this->recipient_thana' AND merchantCode='M-1-0484'");
 				if ($droppoint->rowCount() > 0) {
 					foreach ($droppoint as $droprow){
 						$droppointcode = $droprow['pointCode'];
+						$rec_districtid = $droprow['districtid2'];
                   //echo $droppointcode;
 					}
 					$orderid = date("dmy", strtotime($orderDate))."-".$orderid."-".$pickuppointcode."-".$droppointcode;
 
                //Rate Chart
-					$merRateIdSQL = $this->dbConn->query("SELECT ratechartId, cod from tbl_merchant_info where merchantCode ='M-1-0484'");
+	$merRateIdSQL = $this->dbConn->query("select merchantName,address,contactNumber,districtid,ratechartId, cod from tbl_merchant_info where merchantCode ='M-1-0484'");
 					$merRateIdRow = $merRateIdSQL->fetch();
 					$merRateChartId = $merRateIdRow['ratechartId'];
-					$mercod = $merRateIdRow['cod']; 
+					$merdistrictid = $merRateIdRow['districtid'];
+					$mercod = $merRateIdRow['cod'];
+					$pickMerchantName = $merRateIdRow['merchantName'];
+					$pickMerchantAddress = $merRateIdRow['address'];
+					$pickMerchantPhone = $merRateIdRow['contactNumber'];
 					
-             //I am taking charge and destination null;
+                         //I am taking charge and destination null;
+				
+					 if ($merdistrictid != $rec_districtid){
+                                   $destination = 'interDistrict';
+                                } else {
+                                    $destination = 'local';
+                                }
+                                $orderChargeSQL = $this->dbConn->query("SELECT * FROM tbl_rate_type where ratechartId = '$merRateChartId' and packageOption = 'standard' and deliveryOption = 'regular' and destination = '$destination'");
+                                //$orderChargeResult = mysqli_query($conn,$orderChargeSQL);
+                                $orderChargeRow = $orderChargeSQL->fetch();
+                                $charge = $orderChargeRow['charge'];
+                               
 
 
 					$sql = 'INSERT INTO ' . $this->tableName . '(action,
@@ -156,11 +180,11 @@ class Order {
 					payment_method,
 					merOrderRef,
 					custaddress,
-					pickMerchantAddress,
+					custbillingaddress,
 					emi_detail,
 					freebee_detail,
 					productBrief,
-					comments,ratechartId,destination,customerThana,customerDistrict,merchantCode,cod,creation_date, created_by,orderDate,orderid,ordSeq,pickPointCode,dropPointCode,barcode) VALUES(:action,
+					comments,ratechartId,destination,customerThana,customerDistrict,merchantCode,cod,creation_date, created_by,orderDate,orderid,ordSeq,pickPointCode,dropPointCode,barcode,charge,demo,pickMerchantName,pickupMerchantPhone,pickMerchantAddress,deliveryOption,orderType) VALUES(:action,
 					:recipient_name,
 					:recipient_email,
 					:recipient_type,
@@ -176,9 +200,20 @@ class Order {
 					:emi_detail,
 					:freebee_detail,
 					:products_description,
-					:comments,:ratechartId,:destination,:customerThana,:customerDistrict,:merchantcode,:cod,:creation_date,:created_by,:orderDate,:orderid,:ordSeq,:pickPointCode,:dropPointCode,:barcode)';
+					:comments,:ratechartId,:destination,:customerThana,:customerDistrict,:merchantcode,:cod,:creation_date,:created_by,:orderDate,:orderid,:ordSeq,:pickPointCode,:dropPointCode,:barcode,:charge,:demo,:pickMerchantName,:pickMerchantPhone,:pickMerchantAddress,:deliveryOption,:orderType)';
 
 					$stmt = $this->dbConn->prepare($sql);
+					if($this->payment_method != "Cash On Delivery")
+                       {
+            	          $price = 0;
+                       }
+                      else
+                       {
+            	         $price = $this->price;
+                       }
+                    $weight = 'standard';
+                    $deliveryOption = 'regular';
+                    $orderType = 'Merchant';
 					$stmt->bindParam(':action', $this->action);
 					$stmt->bindParam(':recipient_name', $this->recipient_name);
 					$stmt->bindParam(':recipient_email', $this->recipient_email);
@@ -187,32 +222,52 @@ class Order {
 					$stmt->bindParam(':recipient_thana', $this->recipient_thana);
 
 					$stmt->bindParam(':recipient_district', $this->recipient_district);
-					$stmt->bindParam(':price', $this->price);
-					$stmt->bindParam(':weight', $this->weight);
+					$stmt->bindParam(':price', $price);
+					$stmt->bindParam(':weight', $weight);
 					$stmt->bindParam(':payment_method', $this->payment_method);
 					$stmt->bindParam(':order_id', $this->order_id);
 					$stmt->bindParam(':recipient_address', $this->recipient_address);
+					$stmt->bindParam(':deliveryOption', $deliveryOption);
+					$stmt->bindParam(':orderType', $orderType);
 
 					$stmt->bindParam(':pick_address', $this->pick_address);
 					$stmt->bindParam(':emi_detail', $this->emi_detail);
 					$stmt->bindParam(':freebee_detail', $this->freebee_detail);
 					$stmt->bindParam(':products_description', $this->products_description);
 					$stmt->bindParam(':comments', $this->comments);
+					$stmt->bindParam(':pickMerchantName', $pickMerchantName);
+					$stmt->bindParam(':pickMerchantPhone', $pickMerchantPhone);
+					$stmt->bindParam(':pickMerchantAddress', $pickMerchantAddress);
 
 					/*$ratechartId = 4;*/
-					$destination = 'demo';
+					//$destination = 'demo';
 			/*$customerThana = 5;
 			$customerDistrict = 6;*/
 			$merchantcode = 'M-1-0484';
 			/*$orderDate = '2013-03-15';*/
-			$mer = 'Robi';
+			$mer = 'M-1-0484';
+			$date = date('Y-m-d H:i:s');
+
+			if(substr($this->order_id, 0, 2 ) != "RS")
+			{
+				$democomment = "digired";
+			}
+			else
+			{
+                $democomment = "robishop";
+			}
+
+
+			
 			
 			$stmt->bindParam(':ratechartId', $merRateChartId);
 			$stmt->bindParam(':destination', $destination);
-			$stmt->bindParam(':customerThana', $this->recipient_thana);
-			$stmt->bindParam(':customerDistrict', $this->recipient_district);
+			$stmt->bindParam(':customerThana', $customerThana);
+			$stmt->bindParam(':customerDistrict', $customerDistrict);
+			$stmt->bindParam(':charge', $charge);
+			$stmt->bindParam(':demo', $democomment);
 
-
+            
 			$stmt->bindParam(':merchantcode', $merchantcode);
 			$stmt->bindParam(':orderDate', $orderDate);
 			$stmt->bindParam(':orderid', $orderid);
@@ -220,7 +275,7 @@ class Order {
 			$stmt->bindParam(':pickPointCode', $pickuppointcode);
 			$stmt->bindParam(':dropPointCode', $droppointcode);
 			$stmt->bindParam(':cod', $mercod);
-			$stmt->bindParam(':creation_date', $orderDate);
+			$stmt->bindParam(':creation_date', $date);
 			$stmt->bindParam(':created_by', $mer);
 			$stmt->bindParam(':barcode', $barcode);
 			
@@ -244,147 +299,7 @@ class Order {
             echo $response; exit;
 		}
 
-	}else{
-
-		$pickuppoint = $this->dbConn->query("Select pointCode from tbl_merchant_info where merchantCode = 'M-1-0484'");
-		
-		foreach ($pickuppoint as $pointrow){
-			$merchantPointCode = $pointrow['pointCode'];
-		}
-		$pickupSystemSQL = $this->dbConn->query("SELECT pointCode, pickPointCode from tbl_regular_point where pointCode = '$merchantPointCode'");
-		$pickupSystemRow = $pickupSystemSQL->fetch();
-		
-		$pickuppointcode = $pickupSystemRow['pickPointCode'];
-		//echo $pickuppointcode;
-                            // identify drop point
-		$droppoint = $this->dbConn->query("SELECT pointCode from tbl_point_mapping
-				 where district ='$this->recipient_district' AND thana='$this->recipient_thana' AND merchantCode='M-1-0484'");
-		
-		if ($droppoint->rowCount() > 0) {
-			foreach ($droppoint as $droprow){
-				$droppointcode = $droprow['pointCode'];
-
-			}
-
-			$orderid = date("dmy", strtotime($orderDate))."-".$orderid."-".$pickuppointcode."-".$droppointcode;
-
-			$merRateIdSQL = $this->dbConn->query("select districtid, ratechartId, cod from tbl_merchant_info where merchantCode ='M-1-0484'");
-			$merRateIdRow = $merRateIdSQL->fetch();
-			$merRateChartId = $merRateIdRow['ratechartId'];
-			$mercod = $merRateIdRow['cod']; 
-			$merdistrictid = $merRateIdRow['districtid'];
-
-                                  //I am taking charge and destination null;
-
-
-			$sql = 'INSERT INTO ' . $this->tableName . '(action,
-			custname,
-			recipient_email,
-			recipient_type,
-			custphone,
-			recipient_thana,
-			recipient_district,
-			packagePrice,
-			productSizeWeight,
-			payment_method,
-			merOrderRef,
-			custaddress,
-			pickMerchantAddress,
-			emi_detail,
-			freebee_detail,
-			productBrief,
-			comments,ratechartId,destination,customerThana,customerDistrict,cod,creation_date, created_by,orderDate,orderid,ordSeq,pickPointCode,dropPointCode,merchantCode,barcode) VALUES(:action,
-			:recipient_name,
-			:recipient_email,
-			:recipient_type,
-			:recipient_mobile,
-			:recipient_thana,
-			:recipient_district,
-			:price,
-			:weight,
-			:payment_method,
-			:order_id,
-			:recipient_address,
-			:pick_address,
-			:emi_detail,
-			:freebee_detail,
-			:products_description,
-			:comments,:ratechartId,:destination,:customerThana,:customerDistrict,:cod,:creation_date,:created_by,:orderDate,:orderid,:ordSeq,:pickPointCode,:dropPointCode,:mc,:barcode)';
-
-			$stmt = $this->dbConn->prepare($sql);
-			$stmt->bindParam(':action', $this->action);
-			$stmt->bindParam(':recipient_name', $this->recipient_name);
-			$stmt->bindParam(':recipient_email', $this->recipient_email);
-			$stmt->bindParam(':recipient_type', $this->recipient_type);
-			$stmt->bindParam(':recipient_mobile', $this->recipient_mobile);
-			$stmt->bindParam(':recipient_thana', $this->recipient_thana);
-
-			$stmt->bindParam(':recipient_district', $this->recipient_district);
-			$stmt->bindParam(':price', $this->price);
-			$stmt->bindParam(':weight', $this->weight);
-			$stmt->bindParam(':payment_method', $this->payment_method);
-			$stmt->bindParam(':order_id', $this->order_id);
-			$stmt->bindParam(':recipient_address', $this->recipient_address);
-
-			$stmt->bindParam(':pick_address', $this->pick_address);
-			$stmt->bindParam(':emi_detail', $this->emi_detail);
-			$stmt->bindParam(':freebee_detail', $this->freebee_detail);
-			$stmt->bindParam(':products_description', $this->products_description);
-			$stmt->bindParam(':comments', $this->comments);
-
-			/*$ratechartId = 4;*/
-			$destination = 'demo';
-			/*$customerThana = 5;
-			$customerDistrict = 6;*/
-			$merchatcode = 'demo';
-			/*$orderDate = '2013-03-15';*/
-			$merchantcode = 'M-1-0484';
-			$mer = 'Robi';
-			
-			$stmt->bindParam(':ratechartId', $merRateChartId);
-			$stmt->bindParam(':destination', $destination);
-			$stmt->bindParam(':customerThana', $this->recipient_thana);
-			$stmt->bindParam(':customerDistrict', $this->recipient_district);
-			$stmt->bindParam(':mc', $merchantcode);
-			
-
-			$stmt->bindParam(':orderDate', $orderDate);
-			$stmt->bindParam(':orderid', $orderid);
-			$stmt->bindParam(':ordSeq', $ordSeq);
-			$stmt->bindParam(':pickPointCode', $pickuppointcode);
-			$stmt->bindParam(':dropPointCode', $droppointcode);
-			$stmt->bindParam(':cod', $mercod);
-			$stmt->bindParam(':creation_date', $orderDate);
-			$stmt->bindParam(':created_by', $mer);
-			$stmt->bindParam(':barcode', $barcode);
-			
-			if($stmt->execute()) {
-				
-				return true;
-			} else {
-
-				return false;
-			}
-			
-			
-		}
-		else
-		{
-			http_response_code(400);
-			header("content-type: application/json");
-			$dup = "";
-			$duplicates = (bool)$dup;
-			$suc = "";
-			$success = (bool)$suc;
-
-            $arrytest = array_merge(array('error'=>array('code'=>400, 'message' =>"Customer thana not selected")),array('duplicates'=>$duplicates),array('success'=>$success));
-            $response = json_encode($arrytest);
-            echo $response; exit;
-		}
-      	
-    
-	} 
-    
+	
 
 }catch(Exception $e)
 {           //print_r($this->dbConn->errorInfo());
